@@ -48,7 +48,6 @@ const startSock = () => {
 startSock();
 
 app.post("/send-message", async (req, res) => {
-  console.log("Hola como te va");
   const { number, message } = req.body;
 
   if (!number || !message) {
