@@ -1,18 +1,19 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+
 import express from "express";
-import {
-  makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-} from "@whiskeysockets/baileys";
+import { makeWASocket, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import QRCode from "qrcode";
 import P from "pino";
 
 const app = express();
 const port = process.env.PORT;
 
 app.use(express.json());
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 //Generamos las credenciales
 const { state, saveCreds } = await useMultiFileAuthState("auth_info_baileys");
@@ -22,13 +23,25 @@ const startSock = () => {
   sock = makeWASocket({
     auth: state,
     logger: P({ level: "silent" }),
-    printQRInTerminal: true,
+    printQRInTerminal: false,
   });
 
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log("Generando QR...");
+
+      const qrPath = path.join(__dirname, "qr.png");
+      try {
+        QRCode.toFile(qrPath, qr, { type: "png" });
+        console.log("QR code saved to", qrPath);
+      } catch (err) {
+        console.error("Error generating QR code:", err);
+      }
+    }
 
     if (connection === "close") {
       console.log(lastDisconnect.error?.output.payload);
@@ -42,7 +55,20 @@ const startSock = () => {
   });
 };
 
-startSock();
+app.get("/scan", (req, res) => {
+  const qrPath = path.join(__dirname, "qr.png");
+
+  // Verifica si el archivo QR ya existe
+  fs.access(qrPath, fs.constants.F_OK)
+    .then(() => fs.readFile(qrPath))
+    .then((data) => {
+      res.contentType("image/png");
+      res.send(data);
+    })
+    .catch(() => {
+      res.status(404).send("QR code not found");
+    });
+});
 
 app.post("/send-message", async (req, res) => {
   const { number, message } = req.body;
@@ -68,10 +94,6 @@ app.post("/send-message", async (req, res) => {
 });
 
 app.post("/disconnect", async (req, res) => {
-  // Obtener el directorio actual cuando se usa ES Modules
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-
   const authInfoPath = path.join(__dirname, "auth_info_baileys");
 
   try {
@@ -89,5 +111,6 @@ app.post("/disconnect", async (req, res) => {
 });
 
 app.listen(port, () => {
+  startSock();
   console.log(`API escuchando en http://localhost:${port}`);
 });
