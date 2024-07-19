@@ -1,3 +1,10 @@
+import { configDotenv } from "dotenv";
+
+configDotenv();
+
+import { promises as fs } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import express from "express";
 import {
   makeWASocket,
@@ -7,7 +14,7 @@ import {
 import P from "pino";
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT;
 
 app.use(express.json());
 
@@ -28,18 +35,12 @@ const startSock = () => {
     const { connection, lastDisconnect } = update;
 
     if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log(
-        "connection closed due to ",
-        lastDisconnect.error,
-        ", reconnecting ",
-        shouldReconnect
-      );
-      if (shouldReconnect) {
-        startSock();
-      }
-    } else if (connection === "open") {
+      console.log(lastDisconnect.error?.output.payload);
+
+      startSock();
+    }
+
+    if (connection === "open") {
       console.log("opened connection");
     }
   });
@@ -55,12 +56,39 @@ app.post("/send-message", async (req, res) => {
   }
 
   try {
-    const jid = `${number}@s.whatsapp.net`; // Formato JID para WhatsApp
-    await sock.sendMessage(jid, { text: message });
+    const jid = `549${number}@s.whatsapp.net`; // Formato JID para WhatsApp
+    await Promise.race([
+      sock.sendMessage(jid, { text: message }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout exceeded")), 20000)
+      ),
+    ]);
+
     res.send({ status: "success", message: "Mensaje enviado" });
   } catch (error) {
-    console.error(error);
+    console.error("Error al enviar un mensaje:", error);
     res.status(500).send({ error: "Error al enviar el mensaje" });
+  }
+});
+
+app.post("/disconnect", async (req, res) => {
+  // Obtener el directorio actual cuando se usa ES Modules
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  const authInfoPath = path.join(__dirname, "auth_info_baileys");
+
+  try {
+    await sock.logout();
+
+    await fs.rm(authInfoPath, { recursive: true, force: true });
+
+    res.send({ status: "success", message: "LogOut" });
+
+    // startSock();
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: "Error al cerrar sesión" });
   }
 });
 
