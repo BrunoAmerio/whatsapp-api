@@ -1,7 +1,3 @@
-import { configDotenv } from "dotenv";
-
-configDotenv();
-
 import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
