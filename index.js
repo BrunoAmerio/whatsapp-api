@@ -25,7 +25,7 @@ const startSock = () => {
   sock = makeWASocket({
     auth: state,
     logger: P({ level: "silent" }),
-    printQRInTerminal: true,
+    printQRInTerminal: false,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -36,7 +36,10 @@ const startSock = () => {
     if (qr) {
       console.log("🚧 Generando QR 🚧");
 
+      const qrPath = path.join(__dirname, "qr.png");
       try {
+        QRCode.toFile(qrPath, qr, { type: "png" });
+        console.log("💾 QR code saved to", qrPath);
         console.log("Esperando a ser escaneado 🤳🏻");
       } catch (err) {
         console.error("🛑 Error generating QR code:", err);
